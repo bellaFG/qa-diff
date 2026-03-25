@@ -1,12 +1,12 @@
 ---
 name: QA Diff Onboarding
-description: Interactive skill that detects the project stack, asks clarifying questions, and generates adapter + examples + config for the QA pipeline.
-version: 1.0.0
+description: Interactive skill that deeply inspects the project repo, auto-detects the full stack, asks minimal clarifying questions, and generates adapter + examples + config for the QA pipeline.
+version: 2.0.0
 ---
 
 # QA Diff — Onboarding (`/qa-setup`)
 
-You are the setup wizard for the QA Diff pipeline. Your job is to detect the project's stack, ask the developer a few questions, and generate the configuration files that make `/qa-diff` work.
+You are the setup wizard for the QA Diff pipeline. Your job is to **deeply inspect the target repository**, auto-detect as much as possible, ask the developer only what can't be inferred, and generate the configuration files that make `/qa-diff` work.
 
 ## Output Files
 
@@ -19,90 +19,159 @@ By the end of this process, you will generate:
 
 ## Process
 
-### Step 1 — Auto-Detect Stack
+### Step 1 — Deep Auto-Detection
 
-Scan the project root for these indicators:
+[MUST] Run the full detection from `install/detect-stack.md`. This means **actually reading files**, not just checking existence.
 
-```
-| File/Dir | Language | Framework |
-|----------|----------|-----------|
-| Gemfile, Gemfile.lock | Ruby | check for 'rails' |
-| package.json | JavaScript/TypeScript | check for next, express, vue, react, nuxt, svelte |
-| requirements.txt, pyproject.toml, Pipfile | Python | check for django, fastapi, flask, starlette |
-| go.mod | Go | check for gin, echo, fiber, chi |
-| Cargo.toml | Rust | check for actix, axum, rocket |
-| pom.xml, build.gradle, build.gradle.kts | Java/Kotlin | check for spring, quarkus, micronaut |
-| mix.exs | Elixir | check for phoenix |
-| composer.json | PHP | check for laravel, symfony |
-```
+#### 1.1 Language & Package Manager
 
-Also detect test runner:
+Check for dependency files (`Gemfile`, `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, `build.gradle`, `mix.exs`, `composer.json`, etc.).
 
-```
-| Indicator | Test Runner |
-|-----------|-------------|
-| spec/ dir + Gemfile has 'rspec' | RSpec |
-| test/ dir + Gemfile has 'minitest' | Minitest |
-| pytest.ini, conftest.py, pyproject.toml [tool.pytest] | pytest |
-| test/ dir + Python without pytest | unittest |
-| jest.config.*, package.json has 'jest' | Jest |
-| vitest.config.*, package.json has 'vitest' | Vitest |
-| *_test.go files | go test |
-| tests/ dir + Cargo.toml | cargo test |
-```
+Extract language version from `.ruby-version`, `.nvmrc`, `.node-version`, `.python-version`, `go.mod`, `rust-toolchain.toml`, etc.
 
-Also detect coverage tool:
+#### 1.2 Framework — Read Dependency Files
 
-```
-| Indicator | Coverage Tool |
-|-----------|--------------|
-| simplecov in Gemfile | SimpleCov |
-| coverage in requirements/pyproject | coverage.py / pytest-cov |
-| jest --coverage / c8 / istanbul | Istanbul/c8 |
-| go test -cover | go cover |
+[MUST] **Actually read** the dependency file contents — don't just check for file existence.
+
+- **Ruby**: `cat Gemfile` → grep for `rails`, `sinatra`, `grape`, etc. Read `Gemfile.lock` for exact versions.
+- **JS/TS**: `cat package.json` → parse `dependencies` and `devDependencies` for `next`, `express`, `fastify`, `nestjs`, `vue`, `react`, `svelte`, `angular`, etc. Also detect ORM (`prisma`, `drizzle`, `typeorm`, `sequelize`, `mongoose`).
+- **Python**: `cat requirements.txt` or `cat pyproject.toml` → grep for `django`, `flask`, `fastapi`, `starlette`, etc. Also detect ORM (`sqlalchemy`, `django` built-in, `tortoise-orm`).
+- **Go**: `cat go.mod` → grep for `gin`, `echo`, `fiber`, `chi`, etc.
+- **Rust**: `cat Cargo.toml` → grep for `actix-web`, `axum`, `rocket`, etc.
+- **Java/Kotlin**: `cat pom.xml` or `cat build.gradle` → grep for `spring-boot`, `quarkus`, `micronaut`, `ktor`, etc.
+- **Elixir**: `cat mix.exs` → grep for `:phoenix`, `:plug`, `:absinthe`.
+- **PHP**: `cat composer.json` → grep for `laravel`, `symfony`, `slim`, etc.
+
+#### 1.3 Directory Structure
+
+[MUST] Scan the filesystem to map actual source directories to pipeline categories:
+
+```bash
+find . -maxdepth 3 -type d -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*' -not -path './.bundle/*' -not -path './tmp/*' -not -path './target/*' -not -path './dist/*' -not -path './build/*' -not -path './.next/*' 2>/dev/null
 ```
 
-Also detect security tools:
+Map found directories to `file_patterns` using the framework-specific patterns from `detect-stack.md`.
 
+#### 1.4 Test Runner & Config
+
+[MUST] Detect test runner from:
+- Dependency files (gems, npm packages, pip packages)
+- Config files (`jest.config.*`, `vitest.config.*`, `.rspec`, `pytest.ini`, `conftest.py`, `phpunit.xml`)
+- Test directory existence (`spec/`, `test/`, `tests/`, `__tests__/`)
+- Test file naming patterns (`*_spec.rb`, `*.test.ts`, `test_*.py`, `*_test.go`)
+
+Also detect E2E test runners (`cypress`, `playwright`, `capybara`, `selenium`).
+
+#### 1.5 Coverage, Security, Linting
+
+[MUST] Detect from dependency files and config files:
+- **Coverage**: `simplecov`, `istanbul/c8/nyc`, `pytest-cov`, `jacoco`, `tarpaulin`
+- **Security**: `brakeman`, `bandit`, `gosec`, `eslint-security`, `semgrep`, `snyk`, `bundler-audit`, `cargo-audit`
+- **Linter**: `rubocop`, `eslint`, `biome`, `ruff`, `flake8`, `golangci-lint`, `clippy`, `credo`
+- **Formatter**: `prettier`, `black`, `rustfmt`, `gofmt`
+- **Type checker**: `mypy`, `pyright`, `typescript`, `phpstan`
+
+#### 1.6 Database & ORM
+
+Detect from:
+- Database config files (`config/database.yml`, `settings.py`, `.env.example`)
+- ORM dependencies in package manager files
+- Docker-compose services (`postgres`, `mysql`, `mongo`, `redis`)
+
+#### 1.7 Auth Library & Strategy
+
+[MUST] Detect auth libraries from dependencies:
+- Ruby: `devise`, `omniauth`, `jwt`, `cancancan`, `pundit`
+- JS/TS: `passport`, `next-auth`, `lucia`, `clerk`, `jsonwebtoken`, `jose`
+- Python: `django-allauth`, `flask-login`, `fastapi-users`, `python-jose`
+- Go: `golang-jwt/jwt`, `go-oidc`
+- PHP: Laravel Sanctum/Passport, `tymon/jwt-auth`
+
+#### 1.8 Factory / Test Data Pattern
+
+Detect factory libraries and directories:
+- Ruby: `factory_bot`, `spec/factories/`
+- JS/TS: `fishery`, `@faker-js/faker`, factory files
+- Python: `factory_boy`, `pytest-factoryboy`, `faker`
+- PHP: Laravel factories, `fakerphp/faker`
+- Elixir: `ex_machina`
+
+#### 1.9 Read Existing Test Files
+
+[MUST] **Read 2-3 existing test files** to extract actual patterns:
+
+```bash
+# Find the most recent test files
+find ${TEST_DIR} -name "${TEST_FILE_PATTERN}" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -3
 ```
-| Indicator | Security Tool |
-|-----------|--------------|
-| brakeman in Gemfile | Brakeman |
-| bandit in requirements | Bandit |
-| eslint-plugin-security | ESLint Security |
-| gosec | GoSec |
-| cargo-audit | cargo audit |
+
+From these files, extract:
+1. **Auth helper** — exact function call used to authenticate in tests
+2. **Factory usage** — exact syntax for creating test data
+3. **Assertion style** — assertion patterns and libraries
+4. **Setup/teardown** — how tests prepare state
+5. **Tenant/user creation** — how tests create users and tenants
+
+This is critical for generating adapters with the **exact patterns** the project already uses.
+
+#### 1.10 API Style & CI/CD
+
+- **API**: REST (default), GraphQL (`.graphql` files, `graphql` deps), gRPC (`.proto` files)
+- **CI**: GitHub Actions (`.github/workflows/`), GitLab CI (`.gitlab-ci.yml`), CircleCI, Jenkins, etc.
+- **Deploy**: Vercel, Netlify, Heroku, Fly.io, AWS, etc.
+- **Container**: Dockerfile, docker-compose
+
+#### 1.11 Monorepo Detection
+
+Check for workspaces (`package.json` workspaces, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`, `go.work`). If monorepo detected, identify which app/package is the primary target.
+
+### Step 2 — Present Detection & Ask Minimal Questions
+
+Present the full detection summary and ask **only what couldn't be auto-detected**.
+
+**Always present — Detection Summary:**
+```
+Detected Stack:
+  Language:       [language] [version]
+  Framework:      [framework] [version]
+  ORM/DB:         [orm] + [database]
+  Test Runner:    [test_runner] (dir: [test_dir])
+  Coverage:       [coverage_tool or "not detected"]
+  Security:       [list or "none detected"]
+  Linter:         [linter] + [formatter]
+  Auth:           [auth_lib] ([strategy])
+  Factories:      [factory_lib] (dir: [factory_dir])
+  API:            [api_style]
+  CI:             [ci_platform]
+
+Auth Helper (from tests): [extracted pattern or "could not detect"]
+Factory Pattern (from tests): [extracted pattern or "could not detect"]
+Tenant Pattern (from tests): [extracted pattern or "could not detect"]
+
+Is this correct? [yes] confirm · [no] let me adjust
 ```
 
-### Step 2 — Confirm Detection & Ask Questions
+**Conditional questions — only ask if NOT auto-detected:**
 
-Present detected stack and ask for confirmation + clarifications via `AskUserQuestion`.
+| Question | Ask when |
+|----------|----------|
+| Auth test helper | Auth library detected but exact test helper pattern NOT found in existing tests |
+| Auth model (session/token) | No auth library detected at all |
+| Multi-tenancy model | Always — business logic, not detectable from code |
+| Tenant FK field | Only if multi-tenant (from Q above) |
+| Test data creation | No factory library detected AND no pattern found in existing tests |
+| Report language | Always — user preference |
+| CI setup | CI platform NOT detected |
 
-**Question 1 — Stack Confirmation:**
+**Question flow for undetected items:**
+
+If auth helper was auto-detected from reading tests → skip auth questions entirely.
+If factory pattern was auto-detected → skip factory questions entirely.
+If CI was auto-detected → only ask "Do you want QA gates added to your existing [platform] CI?"
+
+**Multi-Tenancy (always asked — business logic):**
 ```
-Detected: [Language] + [Framework] + [Test Runner]
-
-Is this correct?
-[yes] confirm · [no] let me specify
-```
-
-**Question 2 — Authentication Model:**
-```
-How does authentication work in your tests?
-
-[session] Session-based (login form/helper that sets session)
-[token] Token-based (JWT/API key in headers)
-[none] No auth (public API)
-[custom] Let me describe...
-```
-
-For each choice, ask for the specific helper/pattern:
-- session: "What helper logs in a user in tests? (e.g., `login(user)`, `sign_in(user)`)"
-- token: "How do you generate auth headers? (e.g., `auth_headers(user)`)"
-
-**Question 3 — Multi-Tenancy:**
-```
-Does your app have multi-tenancy (user/org data isolation)?
+Does your app isolate data per user/organization (multi-tenancy)?
 
 [user_fk] Yes — records belong to a user via FK (user_id, account_id, etc.)
 [org] Yes — records belong to an organization/workspace
@@ -114,71 +183,92 @@ If yes:
 - "What FK/field scopes records to a tenant? (e.g., `user_id`, `organization_id`)"
 - "How do you create a second tenant in tests? (e.g., `create(:user, org: other_org)`)"
 
-**Question 4 — Test Data Creation:**
+**Report Language (always asked):**
 ```
-How do you create test data?
+What language should QA reports be written in?
 
-[factory] Factories (FactoryBot, factory_boy, fishery, etc.)
-[fixtures] Fixtures (YAML/JSON files)
-[builder] Builder/helper functions
-[inline] Inline creation (direct DB insert)
-```
-
-**Question 5 — CI Platform:**
-```
-Do you want to set up CI gates?
-
-[github] GitHub Actions (recommended)
-[gitlab] GitLab CI
-[none] Skip CI setup for now
+[en] English · [pt] Portuguese (pt-BR) · [es] Spanish
 ```
 
 ### Step 3 — Generate Files
 
-Based on the answers, generate the three files:
+Based on auto-detection + answers, generate the three files:
 
 #### 3.1 Generate `adapter/project.md`
 
-Read `adapter/INTERFACE.md` for the contract. Fill in every REQUIRED section based on detected stack + answers. Fill OPTIONAL sections if the tools were detected.
+Read `adapter/INTERFACE.md` for the contract. Fill in every REQUIRED section using:
 
-**Key mappings by framework:**
+1. **Auto-detected data** for file_patterns, test_execution, assertions, coverage, security_tools, lint
+2. **Extracted patterns from existing tests** for auth_pattern, factory_pattern
+3. **Developer answers** for multi-tenancy, IDOR safe/vulnerable patterns
+
+**Key: use the EXACT patterns found in the project's existing test files**, not generic templates. If existing tests use `login(user, pessoa)`, the adapter must use exactly that. If tests use `create(:factory_name, user: user)`, the adapter must use exactly that.
+
+**Framework mappings** — use these as fallbacks when existing test patterns are not found:
 
 **Rails:**
 - file_patterns: `app/models/`, `app/controllers/`, `app/views/`, etc.
-- auth: `login(user, pessoa)` or custom
+- auth: `login(user, pessoa)` or `sign_in(user)` (from devise)
 - idor: `grep 'params\[:.*_id\]'`, safe = `current_user.*.find()`, vulnerable = `Model.find()`
 - test: `bundle exec rspec`, `_spec.rb`, `spec/`
 - assertions: `have_received`, `be_present`, `have_http_status`, `allow().to receive`
 
-**Django:**
+**Django / DRF:**
 - file_patterns: `*/models.py`, `*/views.py`, `*/serializers.py`, `*/templates/`
 - auth: `self.client.force_authenticate(user)` or `self.client.login()`
-- idor: `grep 'kwargs\["pk"\]'` or `request.data.get("id")`, safe = `queryset.filter(owner=request.user)`, vulnerable = `Model.objects.get(pk=pk)`
+- idor: `kwargs["pk"]` or `request.data.get("id")`, safe = `queryset.filter(owner=request.user)`, vulnerable = `Model.objects.get(pk=pk)`
 - test: `pytest` or `python manage.py test`, `test_*.py`
 - assertions: `mock.assert_called`, `assertIsNotNone`, `assertEqual`
 
-**Express/Next.js:**
+**Express / Fastify / NestJS:**
 - file_patterns: `src/routes/`, `src/controllers/`, `src/models/`, `pages/api/`
 - auth: `request(app).set('Authorization', token)`
 - idor: `req.params.id` without `where: { userId }`, vulnerable = `Model.findByPk(id)`
 - test: `jest` or `vitest`, `.test.ts`, `__tests__/`
 - assertions: `toHaveBeenCalled`, `toBeTruthy`, `toEqual`
 
-**Go:**
-- file_patterns: `internal/handlers/`, `internal/models/`, `internal/services/`
-- auth: middleware mock or test JWT
-- idor: `c.Param("id")` without user scoping
-- test: `go test ./...`, `_test.go`
-- assertions: `assert.Equal`, `assert.Nil`, `require.NoError`
+**Next.js:**
+- file_patterns: `app/` or `pages/`, `components/`, `lib/`, `pages/api/` or `app/api/`
+- auth: depends on next-auth/clerk/lucia — extract from code
+- idor: API route handlers with `params.id` without user scoping
+- test: `jest` or `vitest`
 
 **FastAPI:**
 - file_patterns: `app/routers/`, `app/models/`, `app/schemas/`
 - auth: `client.headers = {"Authorization": f"Bearer {token}"}`
-- idor: `path parameter id` without `filter(owner_id=current_user.id)`
+- idor: path parameter `id` without `filter(owner_id=current_user.id)`
 - test: `pytest`, `test_*.py`
 - assertions: `mock.assert_called`, `assert response.json()["field"] == value`
 
-For frameworks not listed: use the detected patterns and ask the developer for specifics.
+**Go (Gin/Echo/Fiber/Chi):**
+- file_patterns: `internal/handlers/`, `internal/models/`, `internal/services/`, `cmd/`
+- auth: middleware mock or test JWT
+- idor: `c.Param("id")` without user scoping
+- test: `go test ./...`, `_test.go`
+- assertions: `assert.Equal`, `assert.Nil`, `require.NoError` (testify)
+
+**Phoenix (Elixir):**
+- file_patterns: `lib/*/controllers/`, `lib/*/views/`, `lib/*/live/`, `lib/*/schemas/`
+- auth: `conn |> log_in_user(user)` or similar plug
+- idor: `Repo.get!(Model, id)` without user scoping, safe = `Repo.get_by!(Model, id: id, user_id: user.id)`
+- test: `mix test`, `test/`, `_test.exs`
+- assertions: `assert`, `refute`, `assert_redirected_to`
+
+**Laravel (PHP):**
+- file_patterns: `app/Http/Controllers/`, `app/Models/`, `app/Services/`, `routes/`
+- auth: `$this->actingAs($user)` or `Sanctum::actingAs($user)`
+- idor: `Model::find($id)` without user scoping, safe = `$user->models()->findOrFail($id)`
+- test: `php artisan test` or `./vendor/bin/phpunit`, `tests/`, `Test.php`
+- assertions: `assertStatus`, `assertJson`, `assertDatabaseHas`
+
+**Spring Boot (Java/Kotlin):**
+- file_patterns: `src/main/java/**/controller/`, `src/main/java/**/service/`, `src/main/java/**/repository/`
+- auth: `@WithMockUser` or `SecurityMockMvcRequestPostProcessors`
+- idor: `repository.findById(id)` without user scoping
+- test: `mvn test` or `gradle test`, `src/test/`, `Test.java`
+- assertions: `assertEquals`, `assertNotNull`, `assertThrows`, `mockMvc.perform()`
+
+For frameworks not listed: use the detected patterns from reading files and ask the developer for specifics.
 
 #### 3.2 Generate `examples/project.md`
 
@@ -194,32 +284,57 @@ Write 6-8 concrete code examples using the project's actual syntax:
 
 Use `examples/generic.md` as the conceptual reference, translate to the project's test syntax.
 
+[MUST] Use the EXACT patterns extracted from existing test files — same auth helper, same factory calls, same assertion style.
+
 #### 3.3 Generate `config.yml`
 
 ```yaml
 # Generated by /qa-setup on YYYY-MM-DD
 stack:
   language: <detected>
+  language_version: <detected or null>
   framework: <detected>
-  test_runner: <detected>
+  framework_version: <detected or null>
+  orm: <detected or null>
+  database: <detected or null>
+  api_style: <rest|graphql|grpc>
 
 paths:
-  report_dir: qa-reports    # where reports are saved (committed to repo)
-  temp_dir: /tmp/qa-specs   # where temp specs live (never committed)
+  report_dir: qa-reports
+  temp_dir: /tmp/qa-specs
   source_dirs: "<detected source directories>"
 
+test:
+  runner: <detected>
+  command: "<detected test command>"
+  dir: "<detected test directory>"
+  file_pattern: "<detected pattern>"
+
 auth:
-  model: <session|token|none>
-  login_helper: "<from question 2>"
-  tenant_field: "<from question 3>"
-  other_tenant_helper: "<from question 3>"
+  library: <detected or null>
+  strategy: <session|token|oauth|none>
+  login_helper: "<detected or from question>"
+  tenant_field: "<from question>"
+  other_tenant_helper: "<from question>"
+
+tools:
+  coverage: <detected or null>
+  security: [<detected list>]
+  linter: <detected or null>
+  formatter: <detected or null>
 
 ci:
-  platform: <github|gitlab|none>
+  platform: <detected or null>
   target_branches: [main]
+
+report:
+  language: <from question>
 ```
 
 #### 3.4 (Optional) Install CI
+
+If CI platform was detected:
+- Ask "Do you want QA gates added to your existing [platform] CI?"
 
 If dev chose GitHub Actions:
 1. Read `ci/qa-gate.yml` template
@@ -229,6 +344,10 @@ If dev chose GitHub Actions:
 
 If dev chose GitLab CI:
 1. Generate equivalent `.gitlab-ci.yml` stage
+
+If no CI detected and dev wants CI:
+1. Ask which platform
+2. Generate from template
 
 ### Step 4 — Verify & Report
 
@@ -245,6 +364,12 @@ Setup complete! Generated files:
   - config.yml (project configuration)
   - .github/workflows/qa-gate.yml (CI gate) [if applicable]
 
+Detected stack:
+  [language] [version] + [framework] [version] + [test_runner]
+  DB: [database] via [orm]
+  Auth: [auth_lib] ([strategy])
+  CI: [ci_platform]
+
 Run your first QA:
   /qa-diff
 
@@ -254,7 +379,10 @@ Or specify a PR:
 
 ## Edge Cases
 
-- **Monorepo**: If multiple `package.json` / `Gemfile` detected at different paths, ask which one is the primary app.
+- **Monorepo**: If multiple `package.json` / `Gemfile` detected at different paths, ask which one is the primary app. Use that app's dependencies for detection.
 - **Multiple languages**: If both `Gemfile` and `package.json` exist (e.g., Rails + frontend), detect the primary backend and note the frontend. Generate adapter for the backend; frontend testing is noted as optional in adapter.
 - **No test runner detected**: Ask the developer what they use. If none, warn that qa-diff requires a test runner and suggest setting one up first.
 - **Custom frameworks**: If no known framework detected, ask for file layout and test patterns. Generate a minimal adapter with what's known.
+- **No existing tests**: If the test directory is empty or doesn't exist, fall back to framework-specific templates from the mappings above. Warn that patterns are generic and may need adjustment.
+- **Auth not detectable**: If no auth library is found in deps AND no auth patterns in test files, ask the developer all auth questions (Q2 from question bank).
+- **Multiple databases**: If docker-compose shows multiple databases (e.g., postgres + redis + mongo), detect the primary DB (the one the ORM connects to) and note others as auxiliary services.
