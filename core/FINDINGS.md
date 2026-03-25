@@ -17,24 +17,35 @@ version: 1.0.0
 
 ## Severity
 
+Applies to ALL finding types including FRAGILE:
+
 | Level | Meaning | Impact on Verdict |
 |-------|---------|-------------------|
-| **CRITICAL** | Data loss, security breach, financial error, crash in happy path | BLOCKED (if Bug/Vulnerability) |
+| **CRITICAL** | Data loss, security breach, financial error, crash in happy path | BLOCKED (if Bug/Vulnerability). Must be triaged (if FRAGILE/Improvement) |
 | **HIGH** | Wrong behavior in common edge case, missing validation for common input | Must be triaged |
 | **MEDIUM** | Wrong behavior in rare edge case, suboptimal error handling | Should be triaged |
 | **LOW** | Minor improvement, cosmetic, unlikely edge case | May be deferred |
 
+### FRAGILE and Verdict
+
+FRAGILE findings are in **adjacent code** (not the PR itself), so they follow special rules:
+
+- FRAGILE **never blocks alone** — it's not code the developer changed
+- FRAGILE-CRITICAL (race condition, raw SQL injection, null assumption on financial data) → **must appear in triage** (Phase 7), developer decides
+- FRAGILE-HIGH/MEDIUM/LOW → included in report, appears in triage if other findings exist
+- If ALL findings are FRAGILE and developer ignores them → verdict = `APPROVED_WITH_PENDING`
+
 ## FRAGILE Subtypes
 
-| Subtype | Description | Example |
-|---------|-------------|---------|
-| Implicit ordering | Query relies on DB default order without explicit ORDER BY | `Model.last` without `.order()` |
-| Null assumption | Code assumes non-null but column/field is nullable | `record.field.length` without null check |
-| Broad exception catch | Catches too-wide exception class without re-raising | `rescue Exception` / `except Exception` |
-| Raw SQL without binding | SQL string interpolation instead of parameterized query | `"WHERE id = #{id}"` |
-| Magic string/number | Business logic depends on hardcoded string comparison | `if status == "F"` |
-| Missing index | Query on column without database index (performance time bomb) | `WHERE foreign_key = ?` on unindexed column |
-| Race condition | Non-atomic read-then-write without locking | Check-then-act without transaction |
+| Subtype | Default Severity | Example |
+|---------|-----------------|---------|
+| Raw SQL without binding | CRITICAL | `"WHERE id = #{id}"` — SQL injection risk |
+| Race condition | CRITICAL | Check-then-act without transaction |
+| Null assumption | HIGH | `record.field.length` without null check on nullable column |
+| Implicit ordering | MEDIUM | `Model.last` without `.order()` |
+| Broad exception catch | MEDIUM | `rescue Exception` / `except Exception` |
+| Magic string/number | LOW | `if status == "F"` |
+| Missing index | LOW | `WHERE foreign_key = ?` on unindexed column |
 
 ## Failure Classification (Phase 3.9)
 
@@ -46,7 +57,7 @@ When a spec fails, classify the failure:
 | **B** | Real bug in production code | Register as Bug finding → Phase 7 |
 | **C** | Missing test setup (fixture, seed data, env var) | QA fixes its own spec |
 | **D** | Environment issue (DB down, service unavailable) | Register as Blocker |
-| **E** | Input causes unhandled exception | Register as Bug finding → Phase 7 |
+| **E** | Input causes unhandled exception | Register as Bug finding (severity HIGH) → Phase 7 |
 | **F** | IDOR or security vulnerability confirmed | Register as Vulnerability finding → Phase 7 |
 
 ## Verdict Logic

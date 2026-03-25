@@ -98,6 +98,7 @@ qa-diff/
     REPORT-TEMPLATE.md   # Report format
 
   install/               # Setup wizard
+    detect-stack.md      # Comprehensive auto-detection spec
     onboarding.md        # Auto-detection + question flow
     questions.md         # Question bank
 
@@ -142,6 +143,33 @@ QA Diff is framework-agnostic. The `/qa-setup` wizard has built-in detection for
 | PHP | Laravel, Symfony | PHPUnit |
 
 For other stacks, the wizard asks for your patterns and generates a custom adapter.
+
+## Example Output
+
+```markdown
+## QA REPORT — APPROVED_WITH_PENDING
+
+feature/add-payments · 2026-03-24 · TYPE: ENDPOINT · SIZE: Small · Budget: 15/20 min · Mode: full
+
+### Summary
+Specs: 8 total · 0 failures · ALL in /tmp/
+Coverage: 97.3% · IDOR: 1 · Bugs: 1 · FRAGILE: 1
+H1-H10: all pass
+Mutation: N/A
+
+### IDOR Audit
+| Param | Location | Pattern | Status |
+|-------|----------|---------|--------|
+| :payment_id | payments_controller.rb:42 | `Payment.find(params[:id])` | VULNERABLE |
+
+### Findings
+**Bug 1** · payments_controller.rb:42 · Vulnerability · HIGH · CODER
+IDOR: `Payment.find(params[:id])` without tenant scope — user A can access user B's payments
+Expected: `current_user.payments.find(params[:id])`
+
+**Improvement 1** · payment.rb:15 · FRAGILE · MEDIUM · IGNORED
+Implicit ordering: `Payment.last` without `.order()` — may return wrong record on concurrent inserts
+```
 
 ## Verdicts
 

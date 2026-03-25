@@ -208,15 +208,26 @@ next_steps:
 
 ---
 
+## Note on `paths` and Config
+
+The adapter defines **what** (patterns, commands, assertions). The `config.yml` defines **where** (paths, directories, settings). References in the pipeline use:
+- `[ADAPTER: section.field]` → read from `adapter/project.md`
+- `[CONFIG: section.field]` → read from `config.yml`
+
+`source_dirs` is defined in the adapter under `file_patterns`. All other paths (`report_dir`, `temp_dir`) are in `config.yml`.
+
 ## Validation
 
 When the QA engine loads an adapter, it validates:
 
 1. All REQUIRED sections are present
 2. `file_patterns` has at least `model`, `endpoint`, and `test`
-3. `auth_pattern` has both `setup` and `cross_tenant`
-4. `idor_detection` has `scan_command`, `safe_patterns`, and `vulnerable_patterns`
-5. `test_execution` has `command`
-6. `assertions` has all 7 patterns
+3. `file_patterns.source_dirs` is not empty
+4. `auth_pattern` has both `setup` and `cross_tenant`
+5. `idor_detection` has `scan_command`, `safe_patterns`, and `vulnerable_patterns`
+6. `test_execution.command` is not empty
+7. `test_execution.file_suffix` is not empty
+8. `assertions` has all 7 patterns: `mock_assertion_pattern`, `last_record_pattern`, `weak_assertions` (array with ≥1 item), `status_only_pattern`, `mock_syntax`, `auth_mock_pattern`, `exact_value_assertion`
+9. `factory_pattern.create` is not empty
 
-Missing required section → STOP with clear error message telling the user to run `/qa-setup` or manually add the section.
+Missing or invalid required section → STOP with clear error message telling the user to run `/qa-setup` or manually add the section.

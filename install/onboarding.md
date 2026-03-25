@@ -163,11 +163,21 @@ Is this correct? [yes] confirm · [no] let me adjust
 | Report language | Always — user preference |
 | CI setup | CI platform NOT detected |
 
-**Question flow for undetected items:**
+**Auth question flow — 3 scenarios:**
 
-If auth helper was auto-detected from reading tests → skip auth questions entirely.
-If factory pattern was auto-detected → skip factory questions entirely.
-If CI was auto-detected → only ask "Do you want QA gates added to your existing [platform] CI?"
+1. **Auth helper found in test files** (e.g., `login(user, pessoa)` extracted from existing specs) → **skip auth questions entirely**. Use the detected pattern directly.
+2. **Auth library detected but helper NOT found** (e.g., `devise` in Gemfile but no `sign_in` in test files) → ask **only** the helper question: "We detected [auth_lib]. What's the test helper? (e.g., sign_in(user))"
+3. **No auth library detected** → ask **full** auth question: session/token/none + helper syntax
+
+**Factory question flow — 2 scenarios:**
+
+1. **Factory pattern found in test files** (e.g., `create(:user)` extracted from specs) → **skip factory questions**. Use detected pattern.
+2. **No factory library or pattern detected** → ask how they create test data.
+
+**CI question flow — 2 scenarios:**
+
+1. **CI detected** (e.g., `.github/workflows/` exists) → ask "Do you want QA gates added to your existing [platform] CI?"
+2. **No CI detected** → ask which platform they want (GitHub Actions / GitLab CI / skip)
 
 **Multi-Tenancy (always asked — business logic):**
 ```
@@ -380,7 +390,7 @@ Or specify a PR:
 ## Edge Cases
 
 - **Monorepo**: If multiple `package.json` / `Gemfile` detected at different paths, ask which one is the primary app. Use that app's dependencies for detection.
-- **Multiple languages**: If both `Gemfile` and `package.json` exist (e.g., Rails + frontend), detect the primary backend and note the frontend. Generate adapter for the backend; frontend testing is noted as optional in adapter.
+- **Multiple languages / Full-stack**: If both `Gemfile` and `package.json` exist (e.g., Rails + React, Django + Vue), detect the primary backend and note the frontend. Generate adapter for the backend with an additional `frontend` section in `file_patterns` mapping frontend source directories. Frontend-specific tests (component tests, E2E) are noted as optional. The QA pipeline focuses on backend integration tests but includes frontend files in diff categorization as `view` or `script`.
 - **No test runner detected**: Ask the developer what they use. If none, warn that qa-diff requires a test runner and suggest setting one up first.
 - **Custom frameworks**: If no known framework detected, ask for file layout and test patterns. Generate a minimal adapter with what's known.
 - **No existing tests**: If the test directory is empty or doesn't exist, fall back to framework-specific templates from the mappings above. Warn that patterns are generic and may need adjustment.

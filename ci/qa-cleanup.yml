@@ -10,7 +10,7 @@ name: QA Cleanup
 
 on:
   pull_request:
-    branches: [main]  # UPDATE: match your target branches
+    branches: [{{ TARGET_BRANCHES }}]  # replaced by /qa-setup
     types: [closed]
 
 permissions:
@@ -25,11 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main  # UPDATE: match your default branch
+          ref: {{ DEFAULT_BRANCH }}  # replaced by /qa-setup
 
       - name: Delete QA report for merged branch
         run: |
-          REPORT_DIR="qa-reports"  # UPDATE: match your config.yml paths.report_dir
+          REPORT_DIR="{{ REPORT_DIR }}"  # replaced by /qa-setup
           BRANCH="${{ github.head_ref }}"
           BRANCH_SAFE=$(echo "$BRANCH" | sed 's|/|-|g')
           REPORT="${REPORT_DIR}/qa-report-${BRANCH_SAFE}.md"

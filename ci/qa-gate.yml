@@ -11,7 +11,7 @@ name: QA Gate
 
 on:
   pull_request:
-    branches: [main]  # UPDATE: add your target branches
+    branches: [{{ TARGET_BRANCHES }}]  # replaced by /qa-setup with your target branches (e.g., main, develop)
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
             const { execSync } = require('child_process');
 
             // CONFIGURATION
-            const REPORT_DIR = 'qa-reports';  // UPDATE: match your config.yml paths.report_dir
+            const REPORT_DIR = '{{ REPORT_DIR }}';  // replaced by /qa-setup with config.yml paths.report_dir
 
             const branch = '${{ github.head_ref }}';
             const branchSafe = branch.replace(/\//g, '-');

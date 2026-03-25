@@ -4,7 +4,7 @@ description: Framework-agnostic adversarial QA pipeline — integration-only, ID
 version: 1.0.0
 ---
 
-<!-- [MUST]=mandatory [SHOULD]=recommended [MAY]=optional [ADAPTER]=read from adapter/project.md -->
+<!-- [MUST]=mandatory [SHOULD]=recommended [MAY]=optional [ADAPTER]=read from adapter/project.md [CONFIG]=read from config.yml -->
 
 # QA Pipeline — Integration-Only, Framework-Agnostic
 
@@ -71,32 +71,18 @@ CHECKPOINT Phase 7: "Triage: N coder, N card, N ignored"
 
 ## Phase 1 — Discovery
 
-### 1.0 Detect incremental run
+### 1.0 Run mode
 
-Before starting full discovery, check for a previous report:
+[FUTURE v2] Incremental mode (re-run after fixes, reusing previous report) is planned but not yet specified. For now, every run is `MODE=full`.
 
 ```bash
 BRANCH=$(git branch --show-current)
 BRANCH_SAFE=$(echo "$BRANCH" | sed 's|/|-|g')
-REPORT_DIR="[ADAPTER: paths.report_dir]"  # from config.yml
-PREV_REPORT="${REPORT_DIR}/qa-report-${BRANCH_SAFE}.md"
+REPORT_DIR="[CONFIG: paths.report_dir]"  # from config.yml
+MODE=full
 ```
 
-If `PREV_REPORT` exists and contains `head_sha`:
-1. Extract `PREV_SHA` from frontmatter
-2. Calculate delta: `git diff --name-only ${PREV_SHA}..HEAD -- [ADAPTER: source_dirs]`
-3. If delta only contains files already covered in previous report (dev fixed bugs without adding features):
-   - `MODE=incremental`
-   - Reuse discovery and plan from previous report
-   - Execute ONLY specs for changed files + re-validate previous findings
-   - Budget = half of original budget
-4. If delta introduces new source files not present in previous report:
-   - `MODE=full` — run full
-5. If `PREV_REPORT` does not exist: `MODE=full`
-
-[MUST] Report frontmatter must include `mode: full | incremental`.
-
-[MUST] Incremental report INHERITS unaffected findings from previous (does not re-test what didn't change).
+[MUST] Report frontmatter must include `mode: full`.
 
 ### 1.1 Determine the diff
 
@@ -156,14 +142,14 @@ PR_SIZE by files in source directories:
 | 6-10 | Medium | 30 min |
 | 11+ | Large | 30 min |
 
-Max 3 rounds per file. Large: SECURITY > calculations > logic > CRUD.
+Max 3 rounds per file (write spec → run → fix = 1 round). Large: SECURITY > calculations > logic > CRUD.
 
 ### 1.3 Read context
 
 For each changed file (except tests):
 1. Read complete file
 2. Read existing tests
-3. Factory/fixture discovery: [ADAPTER: factory_discovery_command]
+3. Factory/fixture discovery: [ADAPTER: factory_pattern.discovery_command]
 
 [SHOULD] If the project has bounded context docs → load relevant context.
 [MAY] Read project learning notes if available.
@@ -292,7 +278,7 @@ ALL are integration. Never unit.
 | job/worker | Job spec with real execution |
 | view/component | Endpoint spec (verify response body) |
 
-### 2.3 Present plan (SINGLE INTERRUPTION)
+### 2.3 Present plan (FIRST CONTACT POINT — 1 of 2)
 
 ```
 QA Plan — [branch]
@@ -400,7 +386,7 @@ For every adversarial test:
 
 [MUST for each parameter-based lookup in endpoint]
 
-[ADAPTER: idor_template] — read cross-tenant spec template.
+[ADAPTER: auth_pattern.cross_tenant] — read cross-tenant spec template.
 
 Generic pattern:
 ```pseudocode
@@ -440,7 +426,11 @@ Target: 95% of diff lines via [ADAPTER: coverage.result_path].
 
 [ADAPTER: mutation_testing.command] — mutation testing tool command.
 
-If no mutation testing tool available → property-based testing (loop with random inputs).
+If no mutation testing tool available → property-based testing fallback:
+- Identify domain invariants (e.g., sum of parts == total, values never negative)
+- Generate 100 random inputs within valid ranges
+- Score = % of inputs where invariant holds without unhandled exceptions
+- See `examples/generic.md` section 6 for concrete patterns
 
 Score: >= 80% GOOD, 60-79% MEDIUM, < 60% WEAK.
 
@@ -457,7 +447,7 @@ Score: >= 80% GOOD, 60-79% MEDIUM, < 60% WEAK.
 
 ### 3.10 Coverage cycle
 
-Max 2 rounds. Identify branch/rescue/guard → add test context → re-execute.
+Max 2 additional coverage rounds (separate from the 3-round spec limit in Phase 1.2). Identify branch/rescue/guard → add test context → re-execute.
 
 ### 3.11 Branch analysis
 
@@ -594,6 +584,8 @@ For each item: [C] coder fixes · [I] new card · [X] ignore
 Ex: "1C 2C 3I" = bug 1 and 2 for coder, improvement 1 becomes card
 ```
 
+[MUST] Present findings via `AskUserQuestion` as free-text. Accept compact format (`1C 2C 3I`) and variations: spaces, commas, lowercase (`1c, 2c, 3i`), or verbose (`bug 1 coder, bug 2 coder, improvement 1 card`).
+
 [MUST] After dev response, execute chosen actions:
 - [C] → pass finding context to coder
 - [I] → create issue with finding context
@@ -607,7 +599,7 @@ Ex: "1C 2C 3I" = bug 1 and 2 for coder, improvement 1 becomes card
 
 Sanitize branch name: `BRANCH_SAFE=$(echo "$BRANCH" | sed 's|/|-|g')`.
 
-Save to `[ADAPTER: paths.report_dir]/qa-report-${BRANCH_SAFE}.md` with frontmatter:
+Save to `[CONFIG: paths.report_dir]/qa-report-${BRANCH_SAFE}.md` with frontmatter:
 
 ```yaml
 ---
