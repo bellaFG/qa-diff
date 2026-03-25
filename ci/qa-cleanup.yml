@@ -1,0 +1,43 @@
+# QA Cleanup — GitHub Action Template
+#
+# Deletes the QA report after a PR is merged to keep the repo clean.
+#
+# CONFIGURATION:
+#   - REPORT_DIR: must match qa-gate.yml and config.yml
+#   - Update `branches` to match your target branches
+
+name: QA Cleanup
+
+on:
+  pull_request:
+    branches: [main]  # UPDATE: match your target branches
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main  # UPDATE: match your default branch
+
+      - name: Delete QA report for merged branch
+        run: |
+          REPORT_DIR="qa-reports"  # UPDATE: match your config.yml paths.report_dir
+          BRANCH="${{ github.head_ref }}"
+          BRANCH_SAFE=$(echo "$BRANCH" | sed 's|/|-|g')
+          REPORT="${REPORT_DIR}/qa-report-${BRANCH_SAFE}.md"
+
+          if [ -f "$REPORT" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git rm "$REPORT"
+            git commit -m "chore: cleanup qa report for ${BRANCH}"
+            git push
+          fi

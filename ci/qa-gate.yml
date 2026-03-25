@@ -1,0 +1,134 @@
+# QA Gate — GitHub Action Template
+#
+# Validates that /qa-diff was run before the PR is merged.
+# Checks: report exists, correct branch, head_sha not stale, valid verdict.
+#
+# CONFIGURATION:
+#   - REPORT_DIR: directory where QA reports are stored (default: qa-reports)
+#   - Update `branches` to match your target branches
+
+name: QA Gate
+
+on:
+  pull_request:
+    branches: [main]  # UPDATE: add your target branches
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  qa-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate QA Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+
+            // CONFIGURATION
+            const REPORT_DIR = 'qa-reports';  // UPDATE: match your config.yml paths.report_dir
+
+            const branch = '${{ github.head_ref }}';
+            const branchSafe = branch.replace(/\//g, '-');
+            const path = `${REPORT_DIR}/qa-report-${branchSafe}.md`;
+
+            // 1. Report exists?
+            if (!fs.existsSync(path)) {
+              core.setFailed(
+                `QA not executed. Run \`/qa-diff\` locally on branch \`${branch}\` before pushing.`
+              );
+              return;
+            }
+
+            const report = fs.readFileSync(path, 'utf8');
+
+            // 2. Extract frontmatter
+            const fmMatch = report.match(/^---\n([\s\S]*?)\n---/);
+            if (!fmMatch) {
+              core.setFailed('Report has no valid frontmatter. Run /qa-diff again.');
+              return;
+            }
+
+            const fm = fmMatch[1];
+            const getValue = (key) => {
+              const m = fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+              return m ? m[1].trim() : null;
+            };
+
+            const reportBranch = getValue('branch');
+            const verdict = getValue('verdict');
+            const headSha = getValue('head_sha');
+
+            // 3. Correct branch?
+            if (reportBranch !== branch) {
+              core.setFailed(
+                `Report is from branch \`${reportBranch}\`, but PR is from branch \`${branch}\`. Run /qa-diff on this branch.`
+              );
+              return;
+            }
+
+            // 4. Code changed after QA?
+            if (headSha) {
+              const lastRelevantSha = execSync(
+                `git log --format='%H' --invert-grep --grep='qa report' -1 HEAD -- . ':!${REPORT_DIR}/'`
+              ).toString().trim();
+
+              if (lastRelevantSha && headSha !== lastRelevantSha) {
+                core.setFailed(
+                  `Code changed after QA (report: ${headSha.slice(0, 7)}, current: ${lastRelevantSha.slice(0, 7)}). Run /qa-diff again.`
+                );
+                return;
+              }
+            } else {
+              core.warning('Report has no head_sha. Consider running /qa-diff again to include SHA validation.');
+            }
+
+            // 5. Verdict
+            const VALID_VERDICTS = ['APPROVED', 'APPROVED_WITH_PENDING', 'BLOCKED'];
+
+            if (verdict === 'APPROVED') {
+              core.info('QA approved.');
+            } else if (verdict === 'APPROVED_WITH_PENDING') {
+              core.warning('QA approved with pending findings. Check the report.');
+            } else if (verdict === 'BLOCKED') {
+              core.setFailed('QA blocked. Check the report.');
+            } else {
+              core.setFailed(`Unknown verdict: "${verdict}". Valid: ${VALID_VERDICTS.join(', ')}. Run /qa-diff again.`);
+            }
+
+            // 6. Post report as PR comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = '<!-- qa-gate-report -->';
+            const botComment = comments.find(c => c.body.includes(marker));
+            const body = `${marker}\n${report}`;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
